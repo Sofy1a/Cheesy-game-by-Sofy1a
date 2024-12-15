@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cheesy - Jogo por Sofy_1a</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #D4B19A, #8C4A3D, #F0E1C1); /* Padrão cozy coffee */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            border: 2px solid black;
+            background-color: #E2D0B4; /* Cor suave para o canvas */
+        }
+        #leaderboard {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+        }
+        #resetButton {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: #ff5733;
+            color: white;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+        }
+        #resetButton:hover {
+            background-color: #ff2a00;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<div id="gameOver">
+    <h2>Game Over</h2>
+    <input type="text" id="nickname" placeholder="Seu Nickname" />
+    <button onclick="submitScore()">Postar Pontuação</button>
+</div>
+
+<div id="leaderboard">
+    <h3>Leaderboard</h3>
+    <ul id="scoreList"></ul>
+    <button onclick="toggleLeaderboard()">Fechar Leaderboard</button>
+</div>
+
+<button id="resetButton" onclick="resetGame()">Reiniciar</button>
+
+<script>
+// Configurações do Jogo
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const GRAVITY = 0.6;
+const JUMP_STRENGTH = -12;
+const GAME_SPEED = 6;
+let isJumping = false;
+let canJump = true; // Variável para garantir que o jogador só pule quando possível
+let playerY = canvas.height - 50;
+let playerVelocityY = 0;
+let score = 0;
+let gameOver = false;
+let leaderboard = JSON.parse(localStorage.getItem('leaderboard')) || [];
+
+let ratSpeed = 4; // Velocidade inicial do rato
+let gameSpeed = GAME_SPEED; // Velocidade inicial do cenário
+let lastTime = Date.now(); // Para controle do tempo de aceleração
+
+const player = {
+    x: 50,
+    y: canvas.height - 40, // Ajustando a posição do jogador para o "chão"
+    width: 40,
+    height: 40,
+    color: '#FFD700' // Cor dourada do queijo
+};
+
+const rat = {
+    x: canvas.width,
+    y: canvas.height - 40,
+    width: 40,
+    height: 40,
+    speed: ratSpeed
+};
+
+const rats = [];
+
+function update() {
+    if (gameOver) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Cenário
+    ctx.fillStyle = "#A67C52"; // Cor do chão (tipo madeira)
+    ctx.fillRect(0, canvas.height - 50, canvas.width, 50); // Chão
+
+    // Gravidade
+    playerVelocityY += GRAVITY;
+    player.y += playerVelocityY;
+
+    if (player.y > canvas.height - 40) {
+        player.y = canvas.height - 40;
+        playerVelocityY = 0;
+        canJump = true; // O jogador pode pular novamente quando chega no chão
+    }
+
+    // Verifica o tempo passado e aumenta a velocidade do cenário e dos ratos a cada segundo
+    let currentTime = Date.now();
+    if (currentTime - lastTime >= 1000) { // A cada 1 segundo
+        gameSpeed += 0.2; // Aumenta a velocidade do cenário
+        ratSpeed += 0.1; // Aumenta a velocidade dos ratos
+        lastTime = currentTime; // Atualiza o tempo
+    }
+
+    // Movimento do rato e pontuação
+    if (rats.length === 0 || rats[rats.length - 1].x < canvas.width - 300) {
+        rats.push({ ...rat, x: canvas.width });
+    }
+
+    for (let i = 0; i < rats.length; i++) {
+        rats[i].x -= ratSpeed;
+
+        // Desenhando os ratos
+        ctx.fillStyle = "#808080"; // Cor do corpo do rato
+        ctx.beginPath();
+        ctx.arc(rats[i].x + rats[i].width / 2, rats[i].y + rats[i].height / 4, 15, 0, Math.PI * 2); // Cabeça do rato
+        ctx.fill();
+
+        // Corpo do rato
+        ctx.fillStyle = "#4B4B4B"; // Cor do corpo
+        ctx.fillRect(rats[i].x - 5, rats[i].y + 15, rats[i].width, 25); 
+
+        // Orelhas
+        ctx.fillStyle = "#D3D3D3"; // Cor das orelhas
+        ctx.beginPath();
+        ctx.arc(rats[i].x + 10, rats[i].y + 5, 7, 0, Math.PI * 2); // Orelha esquerda
+        ctx.arc(rats[i].x + rats[i].width - 10, rats[i].y + 5, 7, 0, Math.PI * 2); // Orelha direita
+        ctx.fill();
+
+        // Cauda
+        ctx.strokeStyle = "#333"; // Cor da cauda
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(rats[i].x + rats[i].width / 2, rats[i].y + rats[i].height + 10);
+        ctx.lineTo(rats[i].x + rats[i].width / 2 - 30, rats[i].y + rats[i].height + 30);
+        ctx.stroke();
+
+        // Verificar colisão
+        if (
+            player.x < rats[i].x + rats[i].width &&
+            player.x + player.width > rats[i].x &&
+            player.y < rats[i].y + rats[i].height &&
+            player.y + player.height > rats[i].y
+        ) {
+            gameOver = true;
+            showGameOver();
+        }
+
+        // Remover ratos que saíram da tela
+        if (rats[i].x + rats[i].width < 0) {
+            rats.splice(i, 1);
+            i--;
+        }
+    }
+
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+
+    // Pontuação pela distância (agora o jogador ganha pontos constantemente)
+    score += Math.floor(gameSpeed / 2); // O jogador ganha pontos mais rapidamente
+
+    // HUD
+    ctx.fillStyle = 'black';
+    ctx.font = '24px Arial';
+    ctx.fillText('Pontuação: ' + score, 20, 30);
+
+    // Atualizar o jogo
+    if (!gameOver) {
+        requestAnimationFrame(update);
+    }
+}
+
+function jump() {
+    if (canJump) {
+        isJumping = true;
+        playerVelocityY = JUMP_STRENGTH;
+        canJump = false; // Impede o pulo enquanto o jogador está no ar
+    }
+}
+
+function resetGame() {
+    gameOver = false;
+    isJumping = false;
+    canJump = true; // Permite o pulo novamente ao reiniciar
+    player.y = canvas.height - 40;
+    playerVelocityY = 0;
+    score = 0;
+    rats.length = 0;
+    ratSpeed = 4; // Resetando a velocidade dos ratos
+    gameSpeed = GAME_SPEED; // Resetando a velocidade do cenário
+    document.getElementById('gameOver').style.display = 'none';
+    update();
+}
+
+function showGameOver() {
+    document.getElementById('gameOver').style.display = 'block';
+}
+
+function submitScore() {
+    const nickname = document.getElementById('nickname').value;
+    if (nickname) {
+        leaderboard.push({ name: nickname, score: score });
+        leaderboard.sort((a, b) => b.score - a.score);
+        leaderboard = leaderboard.slice(0, 5); // Limita a 5 melhores pontuações
+        localStorage.setItem('leaderboard', JSON.stringify(leaderboard));
+        updateLeaderboard();
+        resetGame();
+    }
+}
+
+function updateLeaderboard() {
+    const scoreList = document.getElementById('scoreList');
+    scoreList.innerHTML = '';
+    leaderboard.forEach(entry => {
+        const listItem = document.createElement('li');
+        listItem.textContent = `${entry.name}: ${entry.score}`;
+        scoreList.appendChild(listItem);
+    });
+}
+
+function toggleLeaderboard() {
+    const leaderboardDiv = document.getElementById('leaderboard');
+    leaderboardDiv.style.display = leaderboardDiv.style.display === 'block' ? 'none' : 'block';
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.key === 'ArrowUp') {
+        jump();
+    }
+});
+
+document.addEventListener('click', () => {
+    if (!gameOver) {
+        jump();
+    } else {
+        toggleLeaderboard();
+    }
+});
+
+document.addEventListener('touchstart', (e) => {
+    if (!gameOver) {
+        jump();
+    } else {
+        toggleLeaderboard();
+    }
+});
+
+updateLeaderboard();
+update();
+</script>
+
+</body>
+</html>
